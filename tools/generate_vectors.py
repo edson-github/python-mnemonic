@@ -15,7 +15,7 @@ def process(data, lst):
     print("input    : %s (%d bits)" % (data, len(data) * 4))
     print("mnemonic : %s (%d words)" % (code, len(code.split(" "))))
     print("seed     : %s (%d bits)" % (seed, len(seed) * 4))
-    print("xprv     : %s" % xprv)
+    print(f"xprv     : {xprv}")
     print()
     lst.append((data, code, seed, xprv))
 
@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
         # Generate random seeds
         for i in range(12):
-            data = "".join(chr(choice(range(0, 256))) for _ in range(8 * (i % 3 + 2)))
+            data = "".join(chr(choice(range(256))) for _ in range(8 * (i % 3 + 2)))
             data = data.encode("latin1")
             process(data.hex(), out[lang])
 

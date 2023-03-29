@@ -92,9 +92,9 @@ class Mnemonic(object):
     def detect_language(cls, code: str) -> str:
         """Scan the Mnemonic until the language becomes unambiguous."""
         code = cls.normalize_string(code)
-        possible = set(cls(lang) for lang in cls.list_languages())
+        possible = {cls(lang) for lang in cls.list_languages()}
         for word in code.split():
-            possible = set(p for p in possible if word in p.wordlist)
+            possible = {p for p in possible if word in p.wordlist}
             if not possible:
                 raise ConfigurationError(f"Language unrecognized for {word!r}")
         if len(possible) == 1:
@@ -119,11 +119,12 @@ class Mnemonic(object):
         :return: A randomly generated mnemonic
         :rtype: str
         """
-        if strength not in [128, 160, 192, 224, 256]:
+        if strength in {128, 160, 192, 224, 256}:
+            return self.to_mnemonic(secrets.token_bytes(strength // 8))
+        else:
             raise ValueError(
                 "Invalid strength value. Allowed values are [128, 160, 192, 224, 256]."
             )
-        return self.to_mnemonic(secrets.token_bytes(strength // 8))
 
     # Adapted from <http://tinyurl.com/oxmn476>
     def to_entropy(self, words: Union[List[str], str]) -> bytearray:
@@ -138,24 +139,21 @@ class Mnemonic(object):
         # concatenation of the original entropy and the checksum.
         concatLenBits = len(words) * 11
         concatBits = [False] * concatLenBits
-        wordindex = 0
-        for word in words:
+        for wordindex, word in enumerate(words):
             # Find the words index in the wordlist
             ndx = self.wordlist.index(word)
             if ndx < 0:
-                raise LookupError('Unable to find "%s" in word list.' % word)
+                raise LookupError(f'Unable to find "{word}" in word list.')
             # Set the next 11 bits to the value of the index.
             for ii in range(11):
                 concatBits[(wordindex * 11) + ii] = (ndx & (1 << (10 - ii))) != 0
-            wordindex += 1
         checksumLengthBits = concatLenBits // 33
         entropyLengthBits = concatLenBits - checksumLengthBits
         # Extract original entropy as bytes.
         entropy = bytearray(entropyLengthBits // 8)
-        for ii in range(len(entropy)):
-            for jj in range(8):
-                if concatBits[(ii * 8) + jj]:
-                    entropy[ii] |= 1 << (7 - jj)
+        for ii, jj in itertools.product(range(len(entropy)), range(8)):
+            if concatBits[(ii * 8) + jj]:
+                entropy[ii] |= 1 << (7 - jj)
         # Take the digest of the entropy.
         hashBytes = hashlib.sha256(entropy).digest()
         hashBits = list(
@@ -207,14 +205,8 @@ class Mnemonic(object):
     def expand_word(self, prefix: str) -> str:
         if prefix in self.wordlist:
             return prefix
-        else:
-            matches = [word for word in self.wordlist if word.startswith(prefix)]
-            if len(matches) == 1:  # matched exactly one word in the wordlist
-                return matches[0]
-            else:
-                # exact match not found.
-                # this is not a validation routine, just return the input
-                return prefix
+        matches = [word for word in self.wordlist if word.startswith(prefix)]
+        return matches[0] if len(matches) == 1 else prefix
 
     def expand(self, mnemonic: str) -> str:
         return " ".join(map(self.expand_word, mnemonic.split(" ")))
@@ -223,7 +215,7 @@ class Mnemonic(object):
     def to_seed(cls, mnemonic: str, passphrase: str = "") -> bytes:
         mnemonic = cls.normalize_string(mnemonic)
         passphrase = cls.normalize_string(passphrase)
-        passphrase = "mnemonic" + passphrase
+        passphrase = f"mnemonic{passphrase}"
         mnemonic_bytes = mnemonic.encode("utf-8")
         passphrase_bytes = passphrase.encode("utf-8")
         stretched = hashlib.pbkdf2_hmac(
@@ -239,10 +231,7 @@ class Mnemonic(object):
         # Compute HMAC-SHA512 of seed
         seed = hmac.new(b"Bitcoin seed", seed, digestmod=hashlib.sha512).digest()
 
-        # Serialization format can be found at: https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki#serialization-format
-        xprv = b"\x04\x88\xad\xe4"  # Version for private mainnet
-        if testnet:
-            xprv = b"\x04\x35\x83\x94"  # Version for private testnet
+        xprv = b"\x04\x35\x83\x94" if testnet else b"\x04\x88\xad\xe4"
         xprv += b"\x00" * 9  # Depth, parent fingerprint, and child number
         xprv += seed[32:]  # Chain code
         xprv += b"\x00" + seed[:32]  # Master key
@@ -261,10 +250,7 @@ class Mnemonic(object):
 def main() -> None:
     import sys
 
-    if len(sys.argv) > 1:
-        hex_data = sys.argv[1]
-    else:
-        hex_data = sys.stdin.readline().strip()
+    hex_data = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.readline().strip()
     data = bytes.fromhex(hex_data)
     m = Mnemonic("english")
     print(m.to_mnemonic(data))
